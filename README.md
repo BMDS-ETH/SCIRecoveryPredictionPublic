@@ -10,7 +10,7 @@ For each data base the following information is required (a subset of scores may
 - light touch and pin prich scores at each of the 28 dermatome levels (score range 0-2, saved in individual .csv files)
 - motor scores for each of 10 myotomes (score range 0-5, saved in a separate .csv file)
 - Additional data (saved in a separate .csv file): AISA grade (A,B,C,D,E), neurological level of injury (NLI, in the format 'C4'),patien age in years (or age group), plegia (tetra/para), optional addition of other parameters such as cause of injury or treatment centre. 
-- 
+
 Input and reference data should be saved separately, but for testing it is also possible to use the same data base for matching and reference, too. All information should be provided as columns, patients as rows separately for acute MS, LTS, PPS and additional data, as well as recovery MS (reference data only).See included dummy datasets for details. 
 
 ### Bootstrapping
