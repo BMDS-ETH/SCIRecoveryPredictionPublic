@@ -27,7 +27,7 @@ Patients can be matched using the getDigitalTwins.py script based on different c
 
 Depending on the choice of matching algorithm, if possible, one or multipe matched patients will be identified. The final recovery prediction can be based on either the mean or median of the matched patient trajectories. Motor score assessment uncertainty can be adressed via bootstrapping. 
 
-## Evalaution of matching performance
+## Evaluation of matching performance
 The matching can be evaluated at the individual patient or patient population level using three metrics (evalDigitalTwins.py): 
 1) LEMS deviation: The difference of the lower extremity motor score (i.e. the sum over all motor scores of the lower extremities) between predicted and true recovery
 2) RMSE below the NLI: The root mean squared error of all motor scores below the NLI between predicted and true recovery
