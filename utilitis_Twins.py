@@ -93,7 +93,7 @@ def getaddData(X_addfile_ref,aisa_grade_field,plegia_field,nli_field,age_field, 
     return X_add
 
 # For matching
-def generate_pat_uncert(df_uncert, this_X_use, n_bootstrap, nli_ind):
+def generate_pat_uncert(df_uncert, this_X_use, n_bootstrap):
 
     ms_true = this_X_use.values
 
@@ -103,19 +103,14 @@ def generate_pat_uncert(df_uncert, this_X_use, n_bootstrap, nli_ind):
     # draw samples for each of the scores below the nli
     for i, this_ms in enumerate(ms_true):
 
-        if i < nli_ind:
-            sc_boot = [this_ms for this_n_rand in range(0, n_bootstrap)]
+        # Draw random numbers
+        n_rands = np.random.uniform(0, 1, n_bootstrap)
 
-        else:
+        # get score pdf
+        sc_prop = df_uncert.loc[this_ms, :].cumsum()
 
-            # Draw random numbers
-            n_rands = np.random.uniform(0, 1, n_bootstrap)
-
-            # get score pdf
-            sc_prop = df_uncert.loc[this_ms, :].cumsum()
-
-            # Assign score based on random numbers
-            sc_boot = [int(sc_prop.index[(sc_prop > this_n_rand).values][0]) for this_n_rand in n_rands]
+        # Assign score based on random numbers
+        sc_boot = [int(sc_prop.index[(sc_prop > this_n_rand).values][0]) for this_n_rand in n_rands]
 
         # add to dataframe
         df_new.loc[:, this_X_use.index[i]] = sc_boot

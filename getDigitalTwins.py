@@ -253,7 +253,7 @@ for p in tqdm.tqdm(pats):
 
     # Generate bootstrap (if needed)
     this_X_MS_use    = X_MS_toMatch.loc[p, ms_fields_toMatch]
-    thisX_MS_uncert  = generate_pat_uncert(df_uncert, this_X_MS_use, n_bootstrap, this_ind_nliMS)
+    thisX_MS_uncert  = generate_pat_uncert(df_uncert, this_X_MS_use, n_bootstrap)
     if 'NN_MS_SS' in useToSubset:
         this_X_use   = pd.concat([X_MS_toMatch.loc[p,:]/5.,X_LTS_toMatch.loc[p,:]/2.,X_PPS_toMatch.loc[p,:]/2.], axis = 0)
     else:
