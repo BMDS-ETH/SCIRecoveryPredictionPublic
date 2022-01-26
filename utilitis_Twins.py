@@ -11,7 +11,7 @@ from sklearn.metrics import pairwise_distances
 #######################################################################################
 
 # Get data
-def getName(useToSubset,sc_tol, useKNN, n_NN, useClosestTwin,allowScoreDoubling):
+def getName(useToSubset,sc_tol, useKNN, n_NN, useClosestTwin,allowScoreDoubling,useMean):
     name = 'Twin_'
 
     # all subsets
@@ -19,7 +19,7 @@ def getName(useToSubset,sc_tol, useKNN, n_NN, useClosestTwin,allowScoreDoubling)
         name += sub+'_'
 
     # score tolerance
-    if np.any(['LEMS' in useToSubset,'MeanScBlNLI' in useToSubset]):
+    if np.any(['LEMS' in useToSubset,'MeanScBlNLI' in useToSubset,'RMSE' in useToSubset]):
         name += 'SCtol'+ str(sc_tol) + '_' + 'scDouble'+str(allowScoreDoubling)
 
     # KNN
@@ -29,6 +29,10 @@ def getName(useToSubset,sc_tol, useKNN, n_NN, useClosestTwin,allowScoreDoubling)
             if useClosestTwin:
                 name += 'ClosestTwin_'
 
+    if useMean:
+        name += '_mean'
+    else:
+        name += '_median'
     return name
 def getaddData(X_addfile_ref,aisa_grade_field,plegia_field,nli_field,age_field, sex_field,cause_field,nlicoarse_field,
                useToSubset, ms_fields,X,pats,dermatomes_toMatch,sc_TMS_toMatch):
@@ -93,7 +97,7 @@ def getaddData(X_addfile_ref,aisa_grade_field,plegia_field,nli_field,age_field, 
     return X_add
 
 # For matching
-def generate_pat_uncert(df_uncert, this_X_use, n_bootstrap):
+def generate_pat_uncert(df_uncert, this_X_use, n_bootstrap, nli_ind):
 
     ms_true = this_X_use.values
 
@@ -103,14 +107,19 @@ def generate_pat_uncert(df_uncert, this_X_use, n_bootstrap):
     # draw samples for each of the scores below the nli
     for i, this_ms in enumerate(ms_true):
 
-        # Draw random numbers
-        n_rands = np.random.uniform(0, 1, n_bootstrap)
+        if i < nli_ind:
+            sc_boot = [this_ms for this_n_rand in range(0, n_bootstrap)]
 
-        # get score pdf
-        sc_prop = df_uncert.loc[this_ms, :].cumsum()
+        else:
 
-        # Assign score based on random numbers
-        sc_boot = [int(sc_prop.index[(sc_prop > this_n_rand).values][0]) for this_n_rand in n_rands]
+            # Draw random numbers
+            n_rands = np.random.uniform(0, 1, n_bootstrap)
+
+            # get score pdf
+            sc_prop = df_uncert.loc[this_ms, :].cumsum()
+
+            # Assign score based on random numbers
+            sc_boot = [int(sc_prop.index[(sc_prop > this_n_rand).values][0]) for this_n_rand in n_rands]
 
         # add to dataframe
         df_new.loc[:, this_X_use.index[i]] = sc_boot
@@ -133,7 +142,7 @@ def getTwin(useToSubset, data_Knn_use, this_X_use,X_add_ref_use, this_char,useKN
         this_sc = this_char[i_sc]
 
         if sub in ['RMSEblNLI']:
-            this_X_MS = this_X_use[:20]*5
+            this_X_MS = this_X_use[:20]
             this_rmse = [mean_squared_error(X_MS_ref.loc[i,:][this_ind_nliMS:].values,this_X_MS[this_ind_nliMS:].values, squared=False) for i in list(data_sub.index)]
             inds_keep =np.where(np.array(this_rmse)<=sc_tol)[0]
             data_sub_sc = data_sub.iloc[inds_keep]

@@ -150,6 +150,10 @@ plotSummary  = True  # Plot summary metrics as histograms subset by AISA grade a
 # END OF INPUT
 #######################################################################################
 
+#######################################################################################
+# END OF INPUT
+#######################################################################################
+
 # Check inputs
 if motorfunction_score in useToSubset:
     if len(ms_fields_ref) != 20:
@@ -165,7 +169,7 @@ else:
 
 
 # Prepare output folder
-name = getName(useToSubset,sc_tol, useKNN, n_NN, useClosestTwin,allowScoreDoubling)
+name = getName(useToSubset,sc_tol, useKNN, n_NN, useClosestTwin,allowScoreDoubling,useMean)
 output = os.path.join(output_path, name)
 Path(output).mkdir(parents=True, exist_ok=True)
 Path(os.path.join(output, 'run_predictions')).mkdir(parents=True, exist_ok=True)
@@ -253,12 +257,12 @@ for p in tqdm.tqdm(pats):
 
     # Generate bootstrap (if needed)
     this_X_MS_use    = X_MS_toMatch.loc[p, ms_fields_toMatch]
-    thisX_MS_uncert  = generate_pat_uncert(df_uncert, this_X_MS_use, n_bootstrap)
+    thisX_MS_uncert  = generate_pat_uncert(df_uncert, this_X_MS_use, n_bootstrap, this_ind_nliMS)
     if 'NN_MS_SS' in useToSubset:
         this_X_use   = pd.concat([X_MS_toMatch.loc[p,:]/5.,X_LTS_toMatch.loc[p,:]/2.,X_PPS_toMatch.loc[p,:]/2.], axis = 0)
     else:
         this_X_use   = this_X_MS_use/5.
-        thisX_uncert = thisX_MS_uncert/.5
+    thisX_uncert = thisX_MS_uncert
 
     # Exclude patient from matching if reference and toMatch agree
     if refEqToMatch:
@@ -296,15 +300,16 @@ for p in tqdm.tqdm(pats):
 
                 if 'NN_MS_SS' in useToSubset:
                     this_X_BS = pd.concat(
-                        [thisX_uncert.loc[i,:], X_LTS_toMatch.loc[p, :] / 2., X_PPS_toMatch.loc[p, :] / 2.], axis=0)
+                        [thisX_uncert.loc[i,ms_fields_toMatch]/5., X_LTS_toMatch.loc[p, derm_fields_toMatch] / 2.,
+                         X_PPS_toMatch.loc[p, derm_fields_toMatch] / 2.], axis=0)
                 else:
-                    this_X_BS = thisX_uncert.loc[i,:]
+                    this_X_BS = thisX_uncert.loc[i,ms_fields_toMatch]
 
 
                 bs_y_med, dist_bs, pats_neigh_bs , bs_x_med = getTwin(useToSubset, data_Knn.loc[pats_forref, :], this_X_BS,
                                                        X_add_ref.loc[pats_forref, :], this_char, useKNN, n_NN,
-                                                       useClosestTwin, useMean, Y_ref.loc[pats_forref],
-                                                       X_MS_ref.loc[pats_forref],allowScoreDoubling,sc_tol,this_ind_nliMS)
+                                                       useClosestTwin, useMean, Y_ref.loc[pats_forref,ms_fields_ref],
+                                                       X_MS_ref.loc[pats_forref,ms_fields_ref],allowScoreDoubling,sc_tol,this_ind_nliMS)
                 if len(bs_y_med)>0:
                     y_hat_med.loc[i,:]  = bs_y_med
                     x_hat_med.loc[i, :] = bs_x_med
@@ -312,19 +317,20 @@ for p in tqdm.tqdm(pats):
                     continue
 
             # Get median and 95% CI - dropping any nans!!!
-            max_y_med = np.percentile(y_hat_med.dropna(), 97.5, axis=0)
-            min_y_med = np.percentile(y_hat_med.dropna(), 2.5, axis=0)
-            med_y_med = np.percentile(y_hat_med.dropna(), 50, axis=0)
-            df_median.loc[p, :] = med_y_med
-            df_median_low.loc[p, :] = min_y_med
-            df_median_top.loc[p, :] = max_y_med
+            if len(y_hat_med.dropna())>0:
+                max_y_med = np.percentile(y_hat_med.dropna(), 97.5, axis=0)
+                min_y_med = np.percentile(y_hat_med.dropna(), 2.5, axis=0)
+                med_y_med = np.percentile(y_hat_med.dropna(), 50, axis=0)
+                df_median.loc[p, :] = med_y_med
+                df_median_low.loc[p, :] = min_y_med
+                df_median_top.loc[p, :] = max_y_med
 
-            max_x_med = np.percentile(x_hat_med.dropna(), 97.5, axis=0)
-            min_x_med = np.percentile(x_hat_med.dropna(), 2.5, axis=0)
-            med_x_med = np.percentile(x_hat_med.dropna(), 50, axis=0)
-            df_medianX.loc[p, :] = med_x_med
-            df_medianX_low.loc[p, :] = min_x_med
-            df_medianX_top.loc[p, :] = max_x_med
+                max_x_med = np.percentile(x_hat_med.dropna(), 97.5, axis=0)
+                min_x_med = np.percentile(x_hat_med.dropna(), 2.5, axis=0)
+                med_x_med = np.percentile(x_hat_med.dropna(), 50, axis=0)
+                df_medianX.loc[p, :] = med_x_med
+                df_medianX_low.loc[p, :] = min_x_med
+                df_medianX_top.loc[p, :] = max_x_med
 
         # Plot individual patient (if wanted)
         if plotIndPats:
@@ -425,5 +431,7 @@ if len(df_realY.dropna().index) > 10 and plotSummary:
                               os.path.join(output,'figures'))
 
 print('FINISHED!!')
+
+
 
 
