@@ -1,6 +1,6 @@
 # SCIRecoveryPredictionPublic
 
-We provide a matching algorithm to identify digital twins for spinal cord injury patients in the acute injury phase to predict recovery trajectories. 
+We provide a matching algorithm to identify digital twins for spinal cord injury patients in the acute injury phase (e.g. 1-2weeks) to predict recovery (e.g. 26 weeeks) trajectories. The algorithm is flexible to handle different time points
 
 ## Data required
 This scrip required input data for: 
@@ -18,23 +18,31 @@ Physical examination to assess mytomal integrity is subject to uncertainty stemm
 Based on this estimation it is possible to bootstrap the relevant motor scores used for matching. The final result will be saved as median values and 95\% percentiles (upper and lower bounds), if seleced. 
 
 
-## Matching options
-Patients can be matched using the getDigitalTwins.py script based on different choices: 
+## Matching options:
+Patients can be matched using the getDigitalTwins.py script based on different choices. Each matching comprises three steps: 1) Optional reference pool subgrouping, 2) Motor score matching by one of 4 types, 3) Agglomeration of the (multiple) identified twins to arrive at the final prediciton. 
 
-1) Matching based on k nearest neighbours (based on sensory and/or motor scores)
-2) Matching based on patient subgrouping (by AISA grade, NLI (exact, coarse), LEMS, meanMS below NLI, age, cause of injury)
-3) Matching based on a combination of 1) and 2)
+Step 1: 
+Matching based on patient subgrouping (by AISA grade, NLI, age & sex, cause of injury) - by choosing one or multipe of these subgrouping options the reference pool is resitricted to patients meeting these criteria with respect to the patient oof interest. 
 
-Depending on the choice of matching algorithm, if possible, one or multipe matched patients will be identified. The final recovery prediction can be based on either the mean or median of the matched patient trajectories. Motor score assessment uncertainty can be adressed via bootstrapping. 
+Step 2: 
+Neurological motor function can be matched using one of four different methods: 
+1) Matching based on LEMS (lower extremity motor score) within a given score window (e.g. +/- 5 points)
+2) Matching based on the mean motor score below the NLI (meanMS) within a given score window (e.g. +/- 0.5 points)
+3) Matching based on the RMSE in the acute phase between the patient of interest and all possible reference patients within a given score (e.g. +/- 0.5 points)
+4) Matching based on k nearest neighbours (based on motor scores only (type 4A), or motor and sensory scores (type 4B)
+
+Step 3: 
+Twins can be agglomerated by either mean or median calculation accross all motor score sequences of the identified twins. 
+
+Motor score assessment uncertainty can be adressed via bootstrapping (optional).
 
 ## Evaluation of matching performance
 The matching can be evaluated at the individual patient or patient population level using three metrics (evalDigitalTwins.py): 
 1) LEMS deviation: The difference of the lower extremity motor score (i.e. the sum over all motor scores of the lower extremities) between predicted and true recovery
 2) RMSE below the NLI: The root mean squared error of all motor scores below the NLI between predicted and true recovery
-3) Mean Linearized Score below the NLI: A linearized score, accounting for the nonlinearity of the motor score scale, averaged over all myotomes below the NLI. The difference between true and prediced recovery scores is given.
-All evaluation scores are presented in the form of histograms over all patients matched by all evaluated models. Median values and 95\% confidence bounds are reported in figure legends. Histograms are currently plotted separately for each score, AISA grade and type of plegia (para/tetra). Summary histograms are also plotted for each matching model if the option "plotSummary = True" in line 145 of getDigitalTwins.py.
+3) Functional scores: AIS grade conversion, walking and self-care ability
 
-In addition to summary metrics it is also possible to visualize individual patient motor scores in the actute and recovery phase (use option "plotIndPats = True" in line 146 of getDigitalTwins.py).  
+In addition to summary metrics it is also possible to visualize individual patient motor scores in the actute and recovery phase.  
 
 ## Installation
-Please install the required packages by following the instructions for [installation of the scanpy package] (https://scanpy.readthedocs.io/en/stable/) - this fulfills all requirements. 
+Please install the required packages by following the instructions for [installation of the scanpy package] (https://scanpy.readthedocs.io/en/stable/). Addionally we require the tqdm, pandas, pickle, numpy and matplotlib libraries. 
