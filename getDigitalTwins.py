@@ -1,4 +1,5 @@
 import os
+import pickle
 import pandas as pd
 import numpy as np
 import tqdm
@@ -7,40 +8,40 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 
 
-from utilitis_Twins import getaddData, generate_pat_uncert,getPatCar, getTwin, get_eval_scores,\
-    plotIndividualPatTraj_2sides,plotAllScores_Compare3New, getName
+from utilities_Twins import getaddData, generate_pat_uncert,getPatCar, getTwin,\
+    plotIndividualPatTraj_2sides,getName,get_eval_scores, plotAllScores_Compare3New
 
 
 #######################################################################################
 # INPUT SECTION
 #######################################################################################
-
-
+#
 # 1. Scores to be calculated based on given motor scores
 # Options: 'LEMS', 'MeanScBlNLI', 'RMSEblNLI', 'NN_MS_SS', 'NN_MS'
-motorfunction_score = 'NN_MS_SS'
-sc_tol              = 0.5     # Score tolerance for 'LEMS', 'MeanScBlNLI', otherwise unused
+motorfunction_score  = 'LEMS'
+if motorfunction_score == 'LEMS':
+    sc_tol = 5
+else:
+    sc_tol = 0.5
+    # Score tolerance for 'LEMS', 'MeanScBlNLI', otherwise unused
                             # Suggestion: LEMS: 5, MeanScBlNLI: 0.5
-allowScoreDoubling  = False # if True: in case no matching patient could be found that meets the score criterion,
-                            # also patients with a score deviation of 2xsc_tol will be considered
+
 
 # Define the type of nearest neighbour to be used if 'NN_MS_SS' or 'NN_MS' chosen above - otherwise this is ignored
-n_NN           = 10    # number of NN to be used (max)
-useClosestTwin = False # Use all twins at minimum distance or (if False) take average/median of the n_NN nearest neighbours
-useMean        = False # Use the mean or median over all NN as prediction: True: use mean, False: use median
+n_NN           = 10      # number of NN to be used
+useClosestTwin = False    # Use all twins at minimum distance or (if False) take average/median of the n_NN nearest neighbours
+useMean        = True     # Use the mean or median over all NN as prediction: True: use mean, False: use median
+metric_knn     = 'hamming'# hamming or euclidean
+
 
 # 2. Which parameters to include for prior to optional additional KNN based on sensory and motor scores IN ORDER!:
-# Options: 'aisa', 'nli', 'age', 'nli_coarse', 'cause', motorfunction_score
+# Options: 'aisa', 'nli', 'age',  motorfunction_score
 # Age match by 10 years - not enforced (if not possible to match it is ignored)
-useToSubset = ['aisa', 'nli', 'age', motorfunction_score]
+useToSubset = ['age','sex','aisa','nli', motorfunction_score]  # 'aisa', 'nli',
 
 
-# 3. Use MS uncertainty distribution to bootstrap - median values will be reported
-# Number of bootstrape (int) - if zero no bootstrap will be performed - use at least 50
-n_bootstrap = 0
 
-
-# 4. Reference Data
+# 3. Reference Data
 # Reference Database: Input/output_files contain motor and (optionally) sensory function at the input, i.e. time of matching,
 # and (optional) time of evaluation. Files should be csv with columns indicating all motor and (optional) sensory scores as floats
 outcome_file_ref  = '/data/Example_MS_26weeks.csv'
@@ -65,20 +66,20 @@ derm_fields_ref = ['C2_l', 'C3_l', 'C4_l', 'C5_l', 'C6_l', 'C7_l', 'C8_l', 'T1_l
                        'T9_r', 'T10_r', 'T11_r', 'T12_r', 'L1_r', 'L2_r', 'L3_r', 'L4_r',
                        'L5_r', 'S1_r', 'S2_r', 'S3_r', 'S45_r']
 
-# Additional information for each patient
-X_addfile_ref =  '/data/Example_addData_2weeks.csv'
+# Additional information for each patient including the NLI, AIS grade and functional scores
+X_addfile_ref = '/data/Example_addData_2weeks.csv'
 
 # Indicate data fields for additional information
 aisa_grade_field_ref = 'AIS'
 plegia_field_ref     = 'plegia'
-nli_field_ref        = 'NLI'
 age_field_ref        = 'AgeAtDOI'
 sex_field_ref        = 'Sex'
 cause_field_ref      = 'Cause'
-nlicoarse_field_ref  = 'NLI_level'
+vac_field            = 'VAC'
+dap_field            = 'DAP'
 
 
-# 5. Patient Data to be matched - as described above for reference data
+# 4. Patient Data to be matched - as described above for reference data
 # Patients to find twins for - optional outcomes as well to evaluate matching:
 refEqToMatch = True
 
@@ -97,11 +98,9 @@ if refEqToMatch:
     X_addfile_toMatch     = X_addfile_ref
     aisa_grade_field_toMatch = aisa_grade_field_ref
     plegia_field_toMatch  = plegia_field_ref
-    nli_field_toMatch     = nli_field_ref
     age_field_toMatch     = age_field_ref
     sex_field_toMatch     = sex_field_ref
     cause_field_toMatch   = cause_field_ref
-    nlicoarse_field_toMatch = nlicoarse_field_ref
 else:
     outcome_file_toMatch  = '/data/ExampleToMatch_MS_26weeks.csv'
     inputMS_file_toMatch  = '/data/ExampleToMatch_MS_2weeks.csv'
@@ -127,16 +126,17 @@ else:
     X_addfile_toMatch  = '/data/ExampleToMatch_addData_2weeks.csv'
     aisa_grade_field_toMatch = 'AIS'
     plegia_field_toMatch     = 'plegia'
-    nli_field_toMatch        = 'NLI'
     age_field_toMatch        = 'AgeAtDOI'
     sex_field_toMatch        = 'Sex'
     cause_field_toMatch      = 'Cause'
-    nlicoarse_field_toMatch  = 'NLI_level'
+    vac_field = 'VAC'
+    dap_field = 'DAP'
 
 
-
-# 6. Score uncertainties (provided)
-useBootstrap   = False
+# 5. Score uncertainties (provided) - Use MS uncertainty distribution to bootstrap - median values will be reported
+# Number of bootstrape (int) - if zero no bootstrap will be performed - use at least 50
+n_bootstrap    = 100
+useBootstrap   = True
 bootstrap_file = '/data/uncertMS.csv'
 
 
@@ -146,13 +146,15 @@ plot_refData = False # Plot a dimensionality reduction of the used scores for ma
 plotIndPats  = False # Plot the patients' true and matched MS at baseline and recovery
 plotSummary  = True  # Plot summary metrics as histograms subset by AISA grade and plegia to evaluate the overall
                      # matching of a patient population - this only makes sense if multiple patients are matched!
-#######################################################################################
-# END OF INPUT
-#######################################################################################
+
+# 8. Patient subsets - optional to only use a subset of the reference data (e.g. in a train/test setting)
+pats_include_file = []
 
 #######################################################################################
 # END OF INPUT
 #######################################################################################
+
+
 
 # Check inputs
 if motorfunction_score in useToSubset:
@@ -161,7 +163,6 @@ if motorfunction_score in useToSubset:
 
     if len(ms_fields_toMatch) != 20:
         raise('Indicate 10 fields for motor scores - `ms_fields_toMatch`!')
-
 if ('NN_MS_SS' in useToSubset) or ('NN_MS' in useToSubset):
     useKNN = True
 else:
@@ -169,11 +170,13 @@ else:
 
 
 # Prepare output folder
-name = getName(useToSubset,sc_tol, useKNN, n_NN, useClosestTwin,allowScoreDoubling,useMean)
+name = getName(useToSubset,sc_tol, useKNN, n_NN, useClosestTwin,False,useMean, metric_knn)
 output = os.path.join(output_path, name)
 Path(output).mkdir(parents=True, exist_ok=True)
 Path(os.path.join(output, 'run_predictions')).mkdir(parents=True, exist_ok=True)
 Path(os.path.join(output, 'figures')).mkdir(parents=True, exist_ok=True)
+print('Working on '+name)
+
 
 # Load ref data
 Y_ref     = pd.read_csv(outcome_file_ref, index_col=0)
@@ -181,9 +184,9 @@ X_MS_ref  = pd.read_csv(inputMS_file_ref, index_col=0)
 X_LTS_ref = pd.read_csv(inputLTS_file_ref, index_col=0)
 X_PPS_ref = pd.read_csv(inputPPS_file_ref, index_col=0)
 df_uncert = pd.read_csv(bootstrap_file, index_col=0)
-X_add_ref = getaddData(X_addfile_ref,aisa_grade_field_ref,plegia_field_ref, nli_field_ref,age_field_ref, sex_field_ref,
-                         cause_field_ref,nlicoarse_field_ref,useToSubset, ms_fields_ref,X_MS_ref, list(Y_ref.index),
-                       dermatomes_ref,sc_TMS_ref)
+X_add_ref = getaddData(X_addfile_ref,aisa_grade_field_ref,plegia_field_ref, age_field_ref, sex_field_ref,
+                         cause_field_ref,useToSubset, ms_fields_ref,X_MS_ref,X_LTS_ref,X_PPS_ref,
+                       list(Y_ref.index),dermatomes_ref,sc_TMS_ref)
 
 
 # Load data for matching
@@ -195,12 +198,27 @@ if len(pats_toMatch)>0:
     pats = pats_toMatch
 else:
     pats = X_MS_toMatch.index
-X_add_toMatch = getaddData(X_addfile_toMatch,aisa_grade_field_toMatch,plegia_field_toMatch, nli_field_toMatch,
-                           age_field_toMatch, sex_field_toMatch,cause_field_toMatch,nlicoarse_field_toMatch,
-                           useToSubset,ms_fields_toMatch,X_MS_toMatch, pats,dermatomes_toMatch,sc_TMS_toMatch)
+X_add_toMatch = getaddData(X_addfile_toMatch,aisa_grade_field_toMatch,plegia_field_toMatch,
+                           age_field_toMatch, sex_field_toMatch,cause_field_toMatch,
+                           useToSubset,ms_fields_toMatch,X_MS_toMatch,X_LTS_toMatch,X_PPS_toMatch,
+                           pats,dermatomes_toMatch,sc_TMS_toMatch)
 
-
-
+# Optional load patient subset
+if len(pats_include_file)>0:
+    pats_use = list(pd.read_csv(pats_include_file,index_col=0).index)
+    Y_toMatch = Y_toMatch.loc[pats_use]
+    X_MS_toMatch = X_MS_toMatch.loc[pats_use]
+    X_LTS_toMatch = X_LTS_toMatch.loc[pats_use]
+    X_PPS_toMatch = X_PPS_toMatch.loc[pats_use]
+    Y_ref = Y_ref.loc[pats_use]
+    X_MS_ref = X_MS_ref.loc[pats_use]
+    X_LTS_ref = X_LTS_ref.loc[pats_use]
+    X_PPS_ref = X_PPS_ref.loc[pats_use]
+    X_add_ref = X_add_ref.loc[pats_use]
+    if len(pats_toMatch) > 0:
+        pats = pats_toMatch
+    else:
+        pats = X_MS_toMatch.index
 
 # Standardize data for NN search
 if np.any([(s in useToSubset) for s in['NN_MS_SS', 'NN_MS'] ]) and useKNN:
@@ -227,6 +245,7 @@ else:
 # Initialize
 df_realY      = pd.DataFrame(columns = ms_fields_toMatch)
 df_realX      = pd.DataFrame(columns = ms_fields_toMatch)
+df_patsNeigh  = pd.DataFrame(columns =['Neighbour','n_neighbour'])
 dists         = []
 df_median     = pd.DataFrame(columns=ms_fields_ref)
 df_median_low = pd.DataFrame(columns=ms_fields_ref)
@@ -252,14 +271,16 @@ for p in tqdm.tqdm(pats):
                 this_ind_nli = 0
 
     # Convert NLI to MS scale
-    ms_blnli = [value for value in dermatomes_toMatch[this_ind_nli:] if value in sc_TMS_toMatch]
-    this_ind_nliMS = 2 * sc_TMS_toMatch.index(ms_blnli[0])
+    this_ind_nliMS = X_add_toMatch.loc[p,'nli_ind_MS']
+
 
     # Generate bootstrap (if needed)
     this_X_MS_use    = X_MS_toMatch.loc[p, ms_fields_toMatch]
     thisX_MS_uncert  = generate_pat_uncert(df_uncert, this_X_MS_use, n_bootstrap, this_ind_nliMS)
     if 'NN_MS_SS' in useToSubset:
-        this_X_use   = pd.concat([X_MS_toMatch.loc[p,:]/5.,X_LTS_toMatch.loc[p,:]/2.,X_PPS_toMatch.loc[p,:]/2.], axis = 0)
+        this_X_use   = pd.concat([X_MS_toMatch.loc[p,ms_fields_toMatch]/5.,
+                                  X_LTS_toMatch.loc[p,derm_fields_toMatch]/2.,
+                                  X_PPS_toMatch.loc[p,derm_fields_toMatch]/2.], axis = 0)
     else:
         this_X_use   = this_X_MS_use/5.
     thisX_uncert = thisX_MS_uncert
@@ -270,32 +291,53 @@ for p in tqdm.tqdm(pats):
     else:
         pats_forref = X_add_ref.index
 
-    # Actual matiching
-    real_y_med, dist, pats_neigh, real_x_med = getTwin(useToSubset, data_Knn.loc[pats_forref,:], this_X_use,
-                                                       X_add_ref.loc[pats_forref,:], this_char,useKNN,n_NN,
-                                                       useClosestTwin,useMean,
-                                                       Y_ref.loc[pats_forref,ms_fields_ref],X_MS_ref.loc[pats_forref,ms_fields_ref],
-                                                       allowScoreDoubling,sc_tol,this_ind_nliMS)
+    # Actual matching
+    real_y_med = []
+    sc_tol_in = sc_tol
+    addMatch_tol = 0
+    while len(real_y_med)<1:
 
-    # Only if a match was found
+        real_y_med, dist, pats_neigh, real_x_med, addMatchNotPos = getTwin(useToSubset, data_Knn.loc[pats_forref,:], this_X_use,
+                                                           X_add_ref.loc[pats_forref,:], this_char,useKNN,n_NN,
+                                                           useClosestTwin,useMean,
+                                                           Y_ref.loc[pats_forref,ms_fields_ref],X_MS_ref.loc[pats_forref,ms_fields_ref],
+                                                           False,sc_tol_in,this_ind_nliMS,addMatch_tol,metric_knn = metric_knn)
+
+        # increase subgroup tolerance (addMatch_tol) if no match was found. Also increase MS match thresholds by
+        # 0.1 for MeanMS and RMSE based matching, 1 point for LEMS - kNN matching will always give a match
+        if len(real_y_med)<1:
+            if addMatchNotPos == 0:
+                addMatch_tol += 1
+
+            if 'LEMS' in useToSubset:
+                sc_tol_in += 1
+            else:
+                sc_tol_in += 0.1
+
+
+    # When a match was found
     if len(real_y_med)>0:
-
         # Save results at baseline (X, time of matching) and recovery (Y)
         dists.append(dist)
         df_realY.loc[p, :] = real_y_med
         df_realX.loc[p, :] = real_x_med
+        df_patsNeigh.loc[p,'Neighbour'] = str(pats_neigh)
+        df_patsNeigh.loc[p, 'n_neighbour'] = len(pats_neigh)
+        with open(os.path.join(output,'twins',str(p)), "wb") as fp:  # Pickling
+            pickle.dump(pats_neigh, fp)
 
         # Bootstrap to estimate uncertainty
         if n_bootstrap > 0:
             y_hat_med = pd.DataFrame(columns=df_realY.columns, index = np.arange(n_bootstrap))
             x_hat_med = pd.DataFrame(columns=df_realY.columns, index=np.arange(n_bootstrap))
             for i in range(0, n_bootstrap):
+                sc_tol_in_bs = sc_tol_in
 
                 if 'LEMS' in useToSubset:
                     this_char[useToSubset.index('LEMS')] = thisX_uncert.loc[i, ms_fields_toMatch[10:]].sum()
 
                 if 'MeanScBlNLI' in useToSubset:
-                    this_char[useToSubset.index('MeanScBlNLI')] = thisX_uncert.loc[i, ms_fields_toMatch[2 * this_ind_nliMS:]].mean()
+                    this_char[useToSubset.index('MeanScBlNLI')] = thisX_uncert.loc[i, ms_fields_toMatch[int(this_ind_nliMS):]].mean()
 
 
                 if 'NN_MS_SS' in useToSubset:
@@ -303,13 +345,33 @@ for p in tqdm.tqdm(pats):
                         [thisX_uncert.loc[i,ms_fields_toMatch]/5., X_LTS_toMatch.loc[p, derm_fields_toMatch] / 2.,
                          X_PPS_toMatch.loc[p, derm_fields_toMatch] / 2.], axis=0)
                 else:
-                    this_X_BS = thisX_uncert.loc[i,ms_fields_toMatch]
+                    this_X_BS = thisX_uncert.loc[i,ms_fields_toMatch]/5.
 
+                bs_y_med = []
+                while len(bs_y_med)==0:
+                    bs_y_med, dist_bs, pats_neigh_bs , bs_x_med, addMatchNotPos = getTwin(useToSubset, data_Knn.loc[pats_forref, :], this_X_BS,
+                                                           X_add_ref.loc[pats_forref, :], this_char, useKNN, n_NN,
+                                                           useClosestTwin, useMean, Y_ref.loc[pats_forref,ms_fields_ref],
+                                                           X_MS_ref.loc[pats_forref,ms_fields_ref],False,
+                                                                          sc_tol_in_bs, int(this_ind_nliMS),
+                                                                            addMatch_tol,metric_knn = metric_knn)
 
-                bs_y_med, dist_bs, pats_neigh_bs , bs_x_med = getTwin(useToSubset, data_Knn.loc[pats_forref, :], this_X_BS,
-                                                       X_add_ref.loc[pats_forref, :], this_char, useKNN, n_NN,
-                                                       useClosestTwin, useMean, Y_ref.loc[pats_forref,ms_fields_ref],
-                                                       X_MS_ref.loc[pats_forref,ms_fields_ref],allowScoreDoubling,sc_tol,this_ind_nliMS)
+                    if len(bs_y_med)>0:
+                        y_hat_med.loc[i,:]  = bs_y_med
+                        x_hat_med.loc[i, :] = bs_x_med
+
+                    else:
+                        if 'LEMS' in useToSubset:
+                            sc_tol_in_bs += 1
+                        else:
+                            sc_tol_in_bs += 0.1
+
+                        if 'NN_MS_SS' in useToSubset:
+                            break
+
+                        if 'NN_MS' in useToSubset:
+                            break
+
                 if len(bs_y_med)>0:
                     y_hat_med.loc[i,:]  = bs_y_med
                     x_hat_med.loc[i, :] = bs_x_med
@@ -338,13 +400,22 @@ for p in tqdm.tqdm(pats):
                                          [df_realY], [df_median_low], [df_median_top],
                                          [df_realX], [df_medianX_low], [df_medianX_top],
                                          [name],os.path.join(output,'figures'), name=str(p)+ '_'+name, doSave=True)
-
     else:
 
         # no match was found
         dists.append(np.nan)
-        df_realY.loc[p, :] = np.nan
-        df_realX.loc[p, :] = np.nan
+        df_realY.loc[p, :] = [np.nan for ik in range(len(df_realY.columns))]
+        df_realX.loc[p, :] = [np.nan for ik in range(len(df_realY.columns))]
+        df_patsNeigh.loc[p, 'Neighbours'] = np.nan
+        df_patsNeigh.loc[p, 'n_neighbours'] = 0
+
+        if n_bootstrap > 0:
+            df_median.loc[p, :] = [np.nan for ik in range(len(df_realY.columns))]
+            df_median_low.loc[p, :] = [np.nan for ik in range(len(df_realY.columns))]
+            df_median_top.loc[p, :] = [np.nan for ik in range(len(df_realY.columns))]
+            df_medianX.loc[p, :] = [np.nan for ik in range(len(df_realY.columns))]
+            df_medianX_low.loc[p, :] = [np.nan for ik in range(len(df_realY.columns))]
+            df_medianX_top.loc[p, :] = [np.nan for ik in range(len(df_realY.columns))]
 
 
 # Overall result
@@ -354,6 +425,7 @@ print('Found matches for '+str(len(df_realY.dropna().index)) + ' out of ' + str(
 # Save to csv
 df_realY.to_csv(os.path.join(output,'run_predictions',name+'_realY.csv'))
 df_realX.to_csv(os.path.join(output,'run_predictions',name+'_realX.csv'))
+df_patsNeigh.to_csv(os.path.join(output,'run_predictions',name+'_patsNeigh.csv'))
 df_dists = pd.DataFrame(dists, index = df_realY.index)
 df_dists.to_csv(os.path.join(output,'run_predictions',name+'_distsTwins.csv'))
 if n_bootstrap>0:
@@ -429,8 +501,6 @@ if len(df_realY.dropna().index) > 10 and plotSummary:
                               ['Twin_BL'],
                               name+ '_BL',
                               os.path.join(output,'figures'))
-
-print('FINISHED!!')
 
 
 
